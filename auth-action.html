@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authentication Action</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Processing...</h1>
+  <div id="form-section" style="display:none;">
+    <input type="password" id="new-password" placeholder="Enter new password" />
+    <button id="reset-button">Reset Password</button>
+  </div>
+  <div id="message"></div>
+
+  <script>
+    const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const type = urlParams.get('type');
+
+    const formSection = document.getElementById('form-section');
+    const messageDiv = document.getElementById('message');
+
+    async function processToken() {
+      if (!token || !type) {
+        document.querySelector('h1').innerText = 'Invalid Link';
+        return;
+      }
+
+      const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+      if (error) {
+        messageDiv.innerText = 'Error: ' + error.message;
+        return;
+      }
+
+      if (type === 'recovery') {
+        document.querySelector('h1').innerText = 'Reset Your Password';
+        formSection.style.display = 'block';
+        document.getElementById('reset-button').onclick = async () => {
+          const newPassword = document.getElementById('new-password').value;
+          if (!newPassword) {
+            messageDiv.innerText = 'Please enter a new password.';
+            return;
+          }
+          const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+          if (error) {
+            messageDiv.innerText = 'Error updating password: ' + error.message;
+          } else {
+            messageDiv.innerText = 'Password updated successfully!';
+            formSection.style.display = 'none';
+          }
+        };
+      } else if (type === 'signup') {
+        document.querySelector('h1').innerText = 'Email Verified!';
+        messageDiv.innerText = 'You can now log in.';
+      } else if (type === 'magiclink') {
+        document.querySelector('h1').innerText = 'Logged in successfully!';
+        messageDiv.innerText = 'Redirecting to app...';
+        // Optional: Redirect to app
+      }
+    }
+
+    processToken();
+  </script>
+</body>
+</html>
