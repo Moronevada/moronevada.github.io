@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EasyCare – Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f7f7fb;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background: #0A355A;
+      color: #fff;
+      padding: 20px;
+      text-align: center;
+    }
+    header img {
+      max-width: 160px;
+      height: auto;
+      margin-bottom: 8px;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .card {
+      background: #fff;
+      max-width: 600px;
+      width: 100%;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.08);
+    }
+    h1 {
+      color: #0A355A;
+      margin-bottom: 16px;
+    }
+    p {
+      color: #444;
+      margin-bottom: 24px;
+    }
+    a.button {
+      display: inline-block;
+      padding: 12px 28px;
+      margin: 8px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      text-decoration: none;
+      color: #fff;
+      background: #0A355A;
+      transition: background .2s;
+    }
+    a.button:hover {
+      background: #092b4d;
+    }
+    footer {
+      text-align: center;
+      padding: 16px;
+      font-size: 13px;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://moronevada.github.io/easycare_logo1.png" alt="EasyCare Logo" />
+    <div>EasyCare Home Health</div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Welcome to EasyCare</h1>
+      <p>
+        This site hosts our authentication helpers and password recovery pages
+        for the EasyCare mobile application.
+      </p>
+
+      <div>
+        <a href="auth-action.html" class="button">Auth Action</a>
+        <a href="reset-password.html" class="button">Reset Password</a>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2025 EasyCare PLLC – <a href="mailto:support@easycarehh.com">support@easycarehh.com</a>
+  </footer>
+</body>
+</html>
