@@ -1,86 +1,33 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Authentication Action</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 24px; }
-    h1 { font-size: 28px; color: #0A355A; margin: 0 0 8px; }
-    p { color: #333; }
-    .hidden { display: none; }
-    .actions a {
-      display: inline-block; margin: 8px 8px 0 0; padding: 10px 16px; border-radius: 8px;
-      text-decoration: none; background: #0A355A; color: #fff; font-weight: 600;
+<meta charset="utf-8">
+<title>Auth redirect</title>
+<script>
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+
+    // Mezcla query y hash (Supabase a veces usa hash)
+    const p = new URLSearchParams();
+    for (const [k,v] of q) p.set(k,v);
+    for (const [k,v] of h) if (!p.has(k)) p.set(k,v);
+
+    // Si viene 'type' desde nuestra app (magiclink/recovery)
+    const type = (p.get('type') || '').toLowerCase();
+
+    // Conserva code/token/token_hash/email, etc.
+    const pass = new URLSearchParams();
+    ['type','code','token','token_hash','email','provider','next'].forEach(k => {
+      const v = p.get(k);
+      if (v) pass.set(k, v);
+    });
+
+    // Si solo es verificación de email (signup/email_change), marca verified=1
+    if (!pass.get('code') && !pass.get('token') && !pass.get('token_hash') && (type === 'signup' || type === 'email_change')) {
+      pass.set('verified', '1');
     }
-    .actions a.secondary { background: #e5e7eb; color: #111; }
-  </style>
-</head>
-<body>
-  <h1 id="title">Processing…</h1>
-  <p id="desc">Please wait while we complete authentication.</p>
 
-  <div id="fallback" class="actions hidden">
-    <a id="open-app" href="#">Open the app</a>
-    <a class="secondary" href="https://moronevada.github.io/">Go to EasyCare site</a>
-  </div>
-
-  <script>
-    (function () {
-      function mergeParams() {
-        const p = new URLSearchParams(window.location.search);
-        const hash = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
-        if (hash) {
-          const h = new URLSearchParams(hash);
-          for (const [k, v] of h.entries()) if (!p.has(k)) p.set(k, v);
-        }
-        return p;
-      }
-
-      const params = mergeParams();
-      const type  = (params.get("type") || params.get("event") || "").toLowerCase();
-      const code  = params.get("code") || params.get("authorization_code") || params.get("auth_code");
-      const token = params.get("token") || params.get("token_hash") || params.get("otp") || params.get("access_token");
-      const email = params.get("email") || params.get("email_address") || params.get("user_email");
-
-      function go(url) {
-        try { window.location.replace(url); } catch (_) { window.location.href = url; }
-        setTimeout(function () {
-          document.getElementById("fallback").classList.remove("hidden");
-          document.getElementById("open-app").setAttribute("href", url);
-          document.getElementById("title").textContent = "Almost there";
-          document.getElementById("desc").textContent = "Tap the button below to open the app.";
-        }, 1500);
-      }
-
-      // 1) MAGIC LINK / RECOVERY / OTP primero (token + type)
-      if (token && type) {
-        const q = new URLSearchParams({
-          type: type,
-          token: token
-        });
-        if (email) q.set("email", email);
-        go("easycare://auth-success?" + q.toString());
-        return;
-      }
-
-      // 2) OAuth PKCE (Google, etc.) - code
-      if (code) {
-        go("io.supabase.easycare://login-callback?code=" + encodeURIComponent(code));
-        return;
-      }
-
-      // 3) Confirmación de email sin credenciales (signup / email_change)
-      if (type === "signup" || type === "email_change") {
-        go("easycare://auth-success?verified=1&type=" + encodeURIComponent(type));
-        return;
-      }
-
-      // Fallback
-      document.getElementById("fallback").classList.remove("hidden");
-      document.getElementById("title").textContent = "Done";
-      document.getElementById("desc").textContent = "You can close this page.";
-    })();
-  </script>
-</body>
-</html>
+    // Abre la app
+    location.href = 'easycare://auth-success?' + pass.toString();
+  })();
+</script>
+<body>Redirecting…</body>
