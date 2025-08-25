@@ -53,23 +53,30 @@
         }, 1500);
       }
 
-      if (code) {
-        go("io.supabase.easycare://login-callback?code=" + encodeURIComponent(code));
-        return;
-      }
-
+      // 1) MAGIC LINK / RECOVERY / OTP primero (token + type)
       if (token && type) {
-        const q = new URLSearchParams({ type, token });
+        const q = new URLSearchParams({
+          type: type,
+          token: token
+        });
         if (email) q.set("email", email);
         go("easycare://auth-success?" + q.toString());
         return;
       }
 
+      // 2) OAuth PKCE (Google, etc.) - code
+      if (code) {
+        go("io.supabase.easycare://login-callback?code=" + encodeURIComponent(code));
+        return;
+      }
+
+      // 3) Confirmación de email sin credenciales (signup / email_change)
       if (type === "signup" || type === "email_change") {
         go("easycare://auth-success?verified=1&type=" + encodeURIComponent(type));
         return;
       }
 
+      // Fallback
       document.getElementById("fallback").classList.remove("hidden");
       document.getElementById("title").textContent = "Done";
       document.getElementById("desc").textContent = "You can close this page.";
