@@ -1,11 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta http-equiv="refresh" content="1;url=io.supabase.easycare://login-callback" />
-    <title>Verifying...</title>
-  </head>
-  <body style="text-align: center; font-family: sans-serif; margin-top: 50px;">
-    <h2>Verifying your email...</h2>
-    <p>If nothing happens, please return to the EasyCare app.</p>
-  </body>
-</html>
+<!doctype html>
+<meta charset="utf-8" />
+<title>Redirecting…</title>
+<script>
+  // Combina query + hash (algunos clientes ponen el code en #)
+  const q = new URLSearchParams(window.location.search);
+  const hash = location.hash ? location.hash.slice(1) : "";
+  if (hash) {
+    const h = new URLSearchParams(hash);
+    for (const [k,v] of h.entries()) if (!q.has(k)) q.set(k, v);
+  }
+  const qs = q.toString();
+  const url = "/auth-action.html" + (qs ? "?" + qs : "");
+  try { location.replace(url); } catch(e) { location.href = url; }
+</script>
