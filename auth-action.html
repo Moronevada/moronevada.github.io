@@ -13,62 +13,68 @@
     @media (prefers-color-scheme: dark) { .actions a.secondary { background:#1f2937; color:#e5e7eb; } }
   </style>
   <script type="module">
-    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-    // ✅ Tus credenciales reales (las mismas que en reset-password.html)
-    const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
-    const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0'; // tu anon key completa
+  const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
+  const SUPABASE_ANON_KEY = '...tu anon key...';
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
 
-    function mergeParams(){
-      const p = new URLSearchParams(location.search);
-      const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-      for (const [k,v] of h.entries()) if (!p.has(k)) p.set(k,v);
-      return p;
-    }
+  function mergeParams() {
+    const q = new URLSearchParams(location.search);
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+    for (const [k, v] of h.entries()) if (!q.has(k)) q.set(k, v);
+    return q;
+  }
 
-    const p = mergeParams();
-    const type = (p.get('type')||p.get('event')||'').toLowerCase();
-    const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
+  const p = mergeParams();
+  const type = (p.get('type') || p.get('event') || '').toLowerCase();
+  const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
+  const accessToken = p.get('access_token');
+  const refreshToken = p.get('refresh_token');
 
-    async function go(url){
-      try { location.replace(url); } catch { location.href = url; }
-      setTimeout(() => {
-        document.getElementById('fallback').classList.remove('hidden');
-        document.getElementById('open-app').href = url;
-      }, 1200);
-    }
+  async function go(url) {
+    try { location.replace(url); } catch { location.href = url; }
+    setTimeout(() => {
+      document.getElementById('fallback').classList.remove('hidden');
+      document.getElementById('open-app').href = url;
+    }, 1200);
+  }
 
-    (async () => {
-      try {
-        // Si hay code ⇒ intercambiamos por sesión
-        // ⚠️ No hagas exchange en recovery; solo reenvía a reset-password.html
-        if (code && type !== 'recovery') {
+  (async () => {
+    try {
+      // 👉 Para signup / magiclink: crea sesión con code o con tokens del hash.
+      if (type !== 'recovery') {
+        if (code) {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error || !data?.session) throw error || new Error('No session');
+          if (error || !data?.session) throw error || new Error('No session (code)');
+        } else if (accessToken && refreshToken) {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken, refresh_token: refreshToken
+          });
+          if (error || !data?.session) throw error || new Error('No session (hash)');
         }
-
-        // Enrutamos por tipo
-        switch (type) {
-          case 'magiclink':  return go('easycare://auth-success?type=magic_done');
-          case 'signup':     return go('easycare://auth-success?type=verified');
-          case 'recovery': {
-            // Si vino ?code, ya hicimos exchange arriba y además lo preservamos.
-            // Si no vino ?code pero hay tokens en el hash, los pasamos tal cual.
-            const search = location.search || (code ? `?code=${encodeURIComponent(code)}` : '');
-            const hash = location.hash || '';
-            return location.replace('reset-password.html' + search + hash);
-          }          default:           return go('easycare://auth-success?type=verified');
-        }
-      } catch (e) {
-        console.error(e);
-        document.getElementById('title').textContent = 'Link inválido o expirado';
-        document.getElementById('desc').textContent = 'Solicita un nuevo enlace desde la app.';
-        document.getElementById('fallback').classList.remove('hidden');
       }
-    })();
-  </script>
+
+      switch (type) {
+        case 'magiclink':  return go('easycare://auth-success?type=magic_done');
+        case 'signup':     return go('easycare://auth-success?type=verified');
+        case 'recovery': {
+          // Para recovery NO se crea sesión aquí: se pasa a reset-password.html
+          const search = location.search || (code ? `?code=${encodeURIComponent(code)}` : '');
+          const hash = location.hash || '';
+          return location.replace('reset-password.html' + search + hash);
+        }
+        default:           return go('easycare://auth-success?type=verified');
+      }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('title').textContent = 'Link inválido o expirado';
+      document.getElementById('desc').textContent = 'Solicita un nuevo enlace desde la app.';
+      document.getElementById('fallback').classList.remove('hidden');
+    }
+  })();
+</script>
 </head>
 <body>
   <h1 id="title">Procesando…</h1>
