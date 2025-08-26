@@ -60,11 +60,20 @@
         case 'magiclink':  return go('easycare://auth-success?type=magic_done');
         case 'signup':     return go('easycare://auth-success?type=verified');
         case 'recovery': {
-          // Para recovery NO se crea sesión aquí: se pasa a reset-password.html
-          const search = location.search || (code ? `?code=${encodeURIComponent(code)}` : '');
-          const hash = location.hash || '';
-          return location.replace('reset-password.html' + search + hash);
-        }
+        // Volvemos a leer/mezclar TODOS los parámetros de query y hash
+        const p2 = mergeParams();        // contiene: type, code (si vino), etc.
+        p2.delete('type');               // opcional: ya no lo necesitamos
+        p2.delete('event');              // opcional: limpiar
+      
+        // Construimos el query string preservando también el hash si viene con tokens
+        const qs = p2.toString();
+        const suffix = qs ? `?${qs}` : '';
+        const hash = location.hash || '';
+      
+        // Redirigimos pasando code o tokens tal cual
+        return location.replace('reset-password.html' + suffix + hash);
+      }
+
         default:           return go('easycare://auth-success?type=verified');
       }
     } catch (e) {
