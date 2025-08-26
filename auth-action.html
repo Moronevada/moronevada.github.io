@@ -51,8 +51,13 @@
         switch (type) {
           case 'magiclink':  return go('easycare://auth-success?type=magic_done');
           case 'signup':     return go('easycare://auth-success?type=verified');
-          case 'recovery':   return location.replace('reset-password.html' + (code?`?code=${encodeURIComponent(code)}`:''));
-          default:           return go('easycare://auth-success?type=verified');
+          case 'recovery': {
+            // Si vino ?code, ya hicimos exchange arriba y además lo preservamos.
+            // Si no vino ?code pero hay tokens en el hash, los pasamos tal cual.
+            const search = location.search || (code ? `?code=${encodeURIComponent(code)}` : '');
+            const hash = location.hash || '';
+            return location.replace('reset-password.html' + search + hash);
+          }          default:           return go('easycare://auth-success?type=verified');
         }
       } catch (e) {
         console.error(e);
