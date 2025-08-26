@@ -1,96 +1,57 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Auth Action</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 24px; }
-    .hidden { display: none; }
-    .actions a { display:inline-block; margin:8px 8px 0 0; padding:10px 16px; border-radius:8px; text-decoration:none; background:#0A355A; color:#fff; font-weight:600; }
-    .actions a.secondary { background:#e5e7eb; color:#111; }
-    @media (prefers-color-scheme: dark) { .actions a.secondary { background:#1f2937; color:#e5e7eb; } }
-  </style>
-  <script type="module">
+<script type="module">
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
   const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0';
-
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
 
   function mergeParams() {
     const q = new URLSearchParams(location.search);
     const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-    for (const [k, v] of h.entries()) if (!q.has(k)) q.set(k, v);
+    for (const [k,v] of h.entries()) if (!q.has(k)) q.set(k,v);
     return q;
   }
 
   const p = mergeParams();
   const type = (p.get('type') || p.get('event') || '').toLowerCase();
   const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
-  const accessToken = p.get('access_token');
-  const refreshToken = p.get('refresh_token');
 
-  async function go(url) {
+  async function go(url){
     try { location.replace(url); } catch { location.href = url; }
     setTimeout(() => {
-      document.getElementById('fallback').classList.remove('hidden');
-      document.getElementById('open-app').href = url;
+      document.getElementById('fallback')?.classList.remove('hidden');
+      const a = document.getElementById('open-app'); if (a) a.href = url;
     }, 1200);
   }
 
   (async () => {
     try {
-      // 👉 Para signup / magiclink: crea sesión con code o con tokens del hash.
-      if (type !== 'recovery') {
-        if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error || !data?.session) throw error || new Error('No session (code)');
-        } else if (accessToken && refreshToken) {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken, refresh_token: refreshToken
-          });
-          if (error || !data?.session) throw error || new Error('No session (hash)');
-        }
+      if (type === 'recovery') {
+        // Solo reenviamos a reset-password.html preservando todo
+        const p2 = mergeParams();
+        p2.delete('type'); p2.delete('event');
+        const qs = p2.toString();
+        const hash = location.hash || '';
+        return location.replace('reset-password.html' + (qs ? `?${qs}` : '') + hash);
+      }
+
+      // Para otros (signup/magic) sí podemos hacer exchange
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error || !data?.session) throw error || new Error('No session');
       }
 
       switch (type) {
         case 'magiclink':  return go('easycare://auth-success?type=magic_done');
         case 'signup':     return go('easycare://auth-success?type=verified');
-        case 'recovery': {
-        // Volvemos a leer/mezclar TODOS los parámetros de query y hash
-        const p2 = mergeParams();        // contiene: type, code (si vino), etc.
-        p2.delete('type');               // opcional: ya no lo necesitamos
-        p2.delete('event');              // opcional: limpiar
-      
-        // Construimos el query string preservando también el hash si viene con tokens
-        const qs = p2.toString();
-        const suffix = qs ? `?${qs}` : '';
-        const hash = location.hash || '';
-      
-        // Redirigimos pasando code o tokens tal cual
-        return location.replace('reset-password.html' + suffix + hash);
-      }
-
         default:           return go('easycare://auth-success?type=verified');
       }
     } catch (e) {
       console.error(e);
       document.getElementById('title').textContent = 'Link inválido o expirado';
       document.getElementById('desc').textContent = 'Solicita un nuevo enlace desde la app.';
-      document.getElementById('fallback').classList.remove('hidden');
+      document.getElementById('fallback')?.classList.remove('hidden');
     }
   })();
 </script>
-</head>
-<body>
-  <h1 id="title">Procesando…</h1>
-  <p id="desc">Por favor espera un momento.</p>
-  <div id="fallback" class="actions hidden">
-    <a id="open-app" href="#">Open the app</a>
-    <a class="secondary" href="https://moronevada.github.io/">Go to EasyCare site</a>
-  </div>
-</body>
-</html>
+
