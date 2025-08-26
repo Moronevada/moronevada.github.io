@@ -43,10 +43,12 @@
     (async () => {
       try {
         // Si hay code ⇒ intercambiamos por sesión
-        if (code) {
+        // ⚠️ No hagas exchange en recovery; solo reenvía a reset-password.html
+        if (code && type !== 'recovery') {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (error || !data?.session) throw error || new Error('No session');
         }
+
         // Enrutamos por tipo
         switch (type) {
           case 'magiclink':  return go('easycare://auth-success?type=magic_done');
