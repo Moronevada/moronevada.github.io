@@ -3,85 +3,179 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EasyCare – Auth Bridge</title>
-
+  <title>EasyCare – Auth Action</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; padding:24px; background:#f7f9fb; }
-    main { max-width:600px; margin:48px auto; text-align:center; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
-    h2 { margin:0 0 8px; color:#0A355A; }
-    p { color:#445; }
-    .hidden { display:none; }
-    a.btn { display:inline-block; padding:12px 20px; background:#0B8B86; color:#fff; border-radius:8px; text-decoration:none; font-weight:600; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f6f7fb;margin:0;padding:32px}
+    .card{max-width:520px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.06);padding:24px}
+    h1{font-size:20px;margin:0 0 12px}
+    p{margin:8px 0 14px;color:#333}
+    .muted{color:#667085;font-size:14px}
+    input[type=password]{width:100%;padding:12px 14px;border:1px solid #d0d5dd;border-radius:10px;font-size:16px}
+    button{width:100%;margin-top:14px;padding:12px 14px;border:0;border-radius:10px;background:#0f766e;color:#fff;font-weight:600;font-size:16px;cursor:pointer}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    .ok{color:#067647}
+    .err{color:#b42318}
+    .hidden{display:none}
+    .center{text-align:center}
+    .spinner{display:inline-block;width:18px;height:18px;border:3px solid #e5e7eb;border-top-color:#0f766e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-3px;margin-right:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    a.btn{display:inline-block;margin-top:10px;padding:10px 14px;background:#0f766e;color:#fff;border-radius:10px;text-decoration:none;font-weight:600}
+    .note{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-top:10px}
   </style>
-
-  <!-- Script principal -->
-  <script type="module">
-    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-    const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
-
-    function mergeParams() {
-      const q = new URLSearchParams(location.search);
-      const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-      for (const [k, v] of h.entries()) if (!q.has(k)) q.set(k, v);
-      return q;
-    }
-
-    async function go(url){
-      try { location.replace(url); } catch { location.href = url; }
-      setTimeout(() => {
-        document.getElementById('fallback')?.classList.remove('hidden');
-        const a = document.getElementById('open-app'); if (a) a.href = url;
-      }, 1200);
-    }
-
-    (async () => {
-      const p = mergeParams();
-      const type = (p.get('type') || p.get('event') || '').toLowerCase();
-      const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
-
-      try {
-        // 🔁 Password recovery: reenvía a tu página de reset preservando parámetros
-        if (type === 'recovery') {
-          const p2 = mergeParams();
-          p2.delete('type'); p2.delete('event');
-          const qs = p2.toString();
-          const hash = location.hash || '';
-          return location.replace('reset-password.html' + (qs ? `?${qs}` : '') + hash);
-        }
-
-        // 🔐 Otros casos (signup / magic link): intercambia code en web y abre la app
-        if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error || !data?.session) throw error || new Error('No session');
-        }
-
-        switch (type) {
-          case 'magiclink':  return go('easycare://auth-success?type=magic_done');
-          case 'signup':     return go('easycare://auth-success?type=verified');
-          default:           return go('easycare://auth-success?type=verified');
-        }
-      } catch (e) {
-        console.error(e);
-        document.getElementById('title').textContent = 'Link inválido o expirado';
-        document.getElementById('desc').textContent  = 'Solicita un nuevo enlace desde la app.';
-        document.getElementById('fallback')?.classList.remove('hidden');
-      }
-    })();
-  </script>
+  <!-- Supabase JS v2 (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-
 <body>
-  <main>
-    <h2 id="title">Processing link…</h2>
-    <p id="desc">Please wait while we redirect you to the EasyCare app.</p>
+  <div class="card" id="view-loading">
+    <h1>Processing…</h1>
+    <p class="muted"><span class="spinner"></span>Validating your link. Please wait.</p>
+  </div>
 
-    <div id="fallback" class="hidden" style="margin-top:20px;">
-      <p>If your app didn’t open automatically, tap below:</p>
-      <a id="open-app" href="#" class="btn">Open in EasyCare</a>
+  <div class="card hidden" id="view-verified">
+    <h1>Link verified ✅</h1>
+    <p class="muted">You can safely return to the app.</p>
+    <div class="center">
+      <a class="btn" id="btn-deeplink" href="#">Open EasyCare</a>
+      <div class="note muted">If it doesn’t open, copy this URL into your browser: <code id="deeplink-code"></code></div>
     </div>
-  </main>
+  </div>
+
+  <div class="card hidden" id="view-recovery">
+    <h1>Reset your password</h1>
+    <p class="muted">Enter a new password for your account.</p>
+    <form id="form-reset">
+      <input id="pwd1" type="password" placeholder="New password" minlength="8" required />
+      <input id="pwd2" type="password" placeholder="Confirm password" minlength="8" required style="margin-top:10px" />
+      <button id="btn-reset" type="submit">Set new password</button>
+      <p class="muted" id="msg-recovery"></p>
+    </form>
+  </div>
+
+  <div class="card hidden" id="view-done">
+    <h1 class="ok">Password updated</h1>
+    <p>Your password was changed successfully.</p>
+    <div class="center">
+      <a class="btn" id="btn-done-deeplink" href="#">Return to EasyCare</a>
+    </div>
+  </div>
+
+  <div class="card hidden" id="view-error">
+    <h1 class="err">Something went wrong</h1>
+    <p id="err-text">Invalid or expired link.</p>
+  </div>
+
+<script>
+(function(){
+  // ---- CONFIG ----
+  const SUPABASE_URL = "https://<YOUR-PROJECT-REF>.supabase.co";  // <-- tu URL de Supabase
+  const SUPABASE_ANON_KEY = "<YOUR-ANON-PUBLIC-KEY>";             // <-- tu anon key
+  // Deep link (app) + fallback web
+  const deeplinkBase = "easycare://auth-success";
+  const webFallback   = "https://easycarehh.com"; // o tu sitio/web de aterrizaje
+
+  // Crear cliente
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Helpers UI
+  const $ = (id)=>document.getElementById(id);
+  const show = (id)=>{["view-loading","view-verified","view-recovery","view-done","view-error"].forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden");}
+
+  function setDeeplink(type){
+    const url = `${deeplinkBase}?type=${encodeURIComponent(type)}`;
+    $("#btn-deeplink").href = url;
+    $("#deeplink-code").textContent = url;
+    $("#btn-done-deeplink").href = url;
+    // Intento abrir automáticamente (no bloqueante)
+    setTimeout(() => { window.location.href = url; setTimeout(()=>{ window.location.href = webFallback; }, 1200); }, 300);
+  }
+
+  // Leer parámetros
+  const params = new URLSearchParams(window.location.search);
+  const type = (params.get("type") || "").toLowerCase();
+  const token = params.get("token") || params.get("token_hash") || params.get("code") || "";
+
+  // Algunos proveedores/plantillas de Supabase pasan por /auth/v1/verify y luego redirigen aquí con ?type=...&token=...
+  // Cubrimos ambos formatos: verifyOtp (token_hash) y exchangeCodeForSession (code).
+
+  (async () => {
+    try {
+      // 1) Si viene token_hash (o token) de tipo recovery/email_change → verifyOtp
+      if (type === "recovery" || type === "email_change" || type === "invite") {
+        if (!token) throw new Error("Missing token for recovery/email change.");
+        // Intento 1: verifyOtp con token_hash (no requiere email para 'recovery' ni 'email_change')
+        let ok = false, lastErr = null;
+        try {
+          const { data, error } = await supabase.auth.verifyOtp({ type: type === "recovery" ? "recovery" : "email_change", token_hash: token });
+          if (error) throw error;
+          ok = true;
+        } catch (e) { lastErr = e; }
+
+        // Intento 2: exchangeCodeForSession (algunas configuraciones envían 'code')
+        if (!ok) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+          if (error) throw error;
+          ok = true;
+        }
+
+        if (!ok) throw lastErr || new Error("Link could not be verified.");
+
+        if (type === "recovery") {
+          // Mostrar formulario de nueva contraseña
+          show("view-recovery");
+          const form = $("#form-reset");
+          form.addEventListener("submit", async (ev)=>{
+            ev.preventDefault();
+            const p1 = $("#pwd1").value.trim();
+            const p2 = $("#pwd2").value.trim();
+            const msg = $("#msg-recovery");
+            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
+            if (p1 !== p2) { msg.textContent = "Passwords do not match."; return; }
+            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
+            const { data, error } = await supabase.auth.updateUser({ password: p1 });
+            if (error) {
+              $("#btn-reset").disabled = false;
+              msg.textContent = error.message || "Could not update password.";
+              return;
+            }
+            show("view-done");
+            setDeeplink("recovery_done");
+          });
+        } else {
+          // email_change / invite → solo confirmar y regresar a app
+          show("view-verified");
+          setDeeplink(type);
+        }
+        return;
+      }
+
+      // 2) Magic link / signup verification (a veces llega 'code' o 'token')
+      if (type === "magiclink" || type === "signup" || type === "email_verification") {
+        if (!token) throw new Error("Missing code.");
+        const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+        if (error) throw error;
+        show("view-verified");
+        setDeeplink(type);
+        return;
+      }
+
+      // 3) Sin tipo reconocido → mostrar OK genérico si se puede, o error
+      if (token) {
+        // Intento genérico
+        const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+        if (!error) {
+          show("view-verified");
+          setDeeplink("done");
+          return;
+        }
+      }
+      throw new Error("Unknown link type.");
+    } catch (e) {
+      console.error(e);
+      $("#err-text").textContent = e.message || "Invalid or expired link.";
+      show("view-error");
+    }
+  })();
+})();
+</script>
 </body>
 </html>
