@@ -88,36 +88,40 @@
     setTimeout(() => { window.location.href = url; setTimeout(()=>{ window.location.href = webFallback; }, 1200); }, 300);
   }
 
-  // --- Read params from query + hash (some providers append errors in #) ---
-  function getCombinedParams() {
-    const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
-    const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
-    const params = new URLSearchParams(q);
-    if (h) {
-      const hashParams = new URLSearchParams(h);
-      for (const [k, v] of hashParams.entries()) {
-        if (!params.has(k)) params.set(k, v);
-      }
+// --- Read params from query + hash (some providers append errors in #) ---
+function getCombinedParams() {
+  const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
+  const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  const params = new URLSearchParams(q);
+  if (h) {
+    const hashParams = new URLSearchParams(h);
+    for (const [k, v] of hashParams.entries()) {
+      if (!params.has(k)) params.set(k, v);
     }
-    return params;
   }
+  return params;
+}
 
-  const params  = getCombinedParams();
-  const type    = (params.get("type") || "").toLowerCase();
-  const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
-  const err     = (params.get("error") || "").toLowerCase();
-  const errCode = (params.get("error_code") || "").toLowerCase();
+const params  = getCombinedParams();
+const type    = (params.get("type") || "").toLowerCase();
+const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
+const err     = (params.get("error") || "").toLowerCase();
+const errCode = (params.get("error_code") || "").toLowerCase();
 
-  // Show friendly error immediately if link already includes an error (e.g., otp_expired)
-  if (err || errCode) {
-    const friendly =
-      errCode === "otp_expired" ? "This link has expired. Please request a new password reset." :
-      err ? `Error: ${err}` :
-      "Something went wrong. Please request a new link.";
-    $("#err-text").textContent = friendly;
-    show("view-error");
-    return;
-  }
+// Show friendly error immediately if link already includes an error
+if (err || errCode) {
+  const friendly =
+    errCode === "otp_expired"
+      ? "This link has expired. Please request a new password reset."
+      : errCode === "rate_limit" || err === "too_many_requests"
+      ? "Too many attempts. Please try again in a little while."
+      : err
+      ? `Error: ${err}`
+      : "Something went wrong. Please request a new link.";
+  document.getElementById("err-text").textContent = friendly;
+  show("view-error");
+  return;
+}
 
   // ---- Main flow ----
   (async () => {
