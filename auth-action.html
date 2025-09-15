@@ -1,57 +1,87 @@
-<script type="module">
-  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EasyCare – Auth Bridge</title>
 
-  const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0';
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; padding:24px; background:#f7f9fb; }
+    main { max-width:600px; margin:48px auto; text-align:center; background:#fff; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
+    h2 { margin:0 0 8px; color:#0A355A; }
+    p { color:#445; }
+    .hidden { display:none; }
+    a.btn { display:inline-block; padding:12px 20px; background:#0B8B86; color:#fff; border-radius:8px; text-decoration:none; font-weight:600; }
+  </style>
 
-  function mergeParams() {
-    const q = new URLSearchParams(location.search);
-    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-    for (const [k,v] of h.entries()) if (!q.has(k)) q.set(k,v);
-    return q;
-  }
+  <!-- Script principal -->
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-  const p = mergeParams();
-  const type = (p.get('type') || p.get('event') || '').toLowerCase();
-  const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
+    const SUPABASE_URL = 'https://tcobgzhtmuxzjdkmwdsy.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
 
-  async function go(url){
-    try { location.replace(url); } catch { location.href = url; }
-    setTimeout(() => {
-      document.getElementById('fallback')?.classList.remove('hidden');
-      const a = document.getElementById('open-app'); if (a) a.href = url;
-    }, 1200);
-  }
-
-  (async () => {
-    try {
-      if (type === 'recovery') {
-        // Solo reenviamos a reset-password.html preservando todo
-        const p2 = mergeParams();
-        p2.delete('type'); p2.delete('event');
-        const qs = p2.toString();
-        const hash = location.hash || '';
-        return location.replace('reset-password.html' + (qs ? `?${qs}` : '') + hash);
-      }
-
-      // Para otros (signup/magic) sí podemos hacer exchange
-      if (code) {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error || !data?.session) throw error || new Error('No session');
-      }
-
-      switch (type) {
-        case 'magiclink':  return go('easycare://auth-success?type=magic_done');
-        case 'signup':     return go('easycare://auth-success?type=verified');
-        default:           return go('easycare://auth-success?type=verified');
-      }
-    } catch (e) {
-      console.error(e);
-      document.getElementById('title').textContent = 'Link inválido o expirado';
-      document.getElementById('desc').textContent = 'Solicita un nuevo enlace desde la app.';
-      document.getElementById('fallback')?.classList.remove('hidden');
+    function mergeParams() {
+      const q = new URLSearchParams(location.search);
+      const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+      for (const [k, v] of h.entries()) if (!q.has(k)) q.set(k, v);
+      return q;
     }
-  })();
-</script>
 
+    async function go(url){
+      try { location.replace(url); } catch { location.href = url; }
+      setTimeout(() => {
+        document.getElementById('fallback')?.classList.remove('hidden');
+        const a = document.getElementById('open-app'); if (a) a.href = url;
+      }, 1200);
+    }
+
+    (async () => {
+      const p = mergeParams();
+      const type = (p.get('type') || p.get('event') || '').toLowerCase();
+      const code = p.get('code') || p.get('authorization_code') || p.get('auth_code');
+
+      try {
+        // 🔁 Password recovery: reenvía a tu página de reset preservando parámetros
+        if (type === 'recovery') {
+          const p2 = mergeParams();
+          p2.delete('type'); p2.delete('event');
+          const qs = p2.toString();
+          const hash = location.hash || '';
+          return location.replace('reset-password.html' + (qs ? `?${qs}` : '') + hash);
+        }
+
+        // 🔐 Otros casos (signup / magic link): intercambia code en web y abre la app
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error || !data?.session) throw error || new Error('No session');
+        }
+
+        switch (type) {
+          case 'magiclink':  return go('easycare://auth-success?type=magic_done');
+          case 'signup':     return go('easycare://auth-success?type=verified');
+          default:           return go('easycare://auth-success?type=verified');
+        }
+      } catch (e) {
+        console.error(e);
+        document.getElementById('title').textContent = 'Link inválido o expirado';
+        document.getElementById('desc').textContent  = 'Solicita un nuevo enlace desde la app.';
+        document.getElementById('fallback')?.classList.remove('hidden');
+      }
+    })();
+  </script>
+</head>
+
+<body>
+  <main>
+    <h2 id="title">Processing link…</h2>
+    <p id="desc">Please wait while we redirect you to the EasyCare app.</p>
+
+    <div id="fallback" class="hidden" style="margin-top:20px;">
+      <p>If your app didn’t open automatically, tap below:</p>
+      <a id="open-app" href="#" class="btn">Open in EasyCare</a>
+    </div>
+  </main>
+</body>
+</html>
