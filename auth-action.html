@@ -22,7 +22,6 @@
     a.btn{display:inline-block;margin-top:10px;padding:10px 14px;background:#0f766e;color:#fff;border-radius:10px;text-decoration:none;font-weight:600}
     .note{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-top:10px}
   </style>
-  <!-- Supabase JS v2 (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -70,14 +69,14 @@
   const SUPABASE_URL = "https://tcobgzhtmuxzjdkmwdsy.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0";
 
-  // Deep link (app) + fallback web
+  // App deep link + web fallback
   const deeplinkBase = "easycare://auth-success";
   const webFallback  = "https://easycarehh.com";
 
-  // Crear cliente
+  // Supabase client
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Helpers UI
+  // UI helpers
   const $ = (id)=>document.getElementById(id);
   const show = (id)=>{["view-loading","view-verified","view-recovery","view-done","view-error"].forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden");}
 
@@ -86,34 +85,62 @@
     $("#btn-deeplink").href = url;
     $("#deeplink-code").textContent = url;
     $("#btn-done-deeplink").href = url;
-    // Intento abrir automáticamente (no bloqueante)
     setTimeout(() => { window.location.href = url; setTimeout(()=>{ window.location.href = webFallback; }, 1200); }, 300);
   }
 
-  // Leer parámetros
-  const params = new URLSearchParams(window.location.search);
-  const type = (params.get("type") || "").toLowerCase();
-  const token = params.get("token") || params.get("token_hash") || params.get("code") || "";
+  // --- Read params from query + hash (some providers append errors in #) ---
+  function getCombinedParams() {
+    const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
+    const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+    const params = new URLSearchParams(q);
+    if (h) {
+      const hashParams = new URLSearchParams(h);
+      for (const [k, v] of hashParams.entries()) {
+        if (!params.has(k)) params.set(k, v);
+      }
+    }
+    return params;
+  }
 
-  // Algunos proveedores/plantillas de Supabase pasan por /auth/v1/verify y luego redirigen aquí con ?type=...&token=...
-  // Cubrimos ambos formatos: verifyOtp (token_hash) y exchangeCodeForSession (code).
+  const params  = getCombinedParams();
+  const type    = (params.get("type") || "").toLowerCase();
+  const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
+  const err     = (params.get("error") || "").toLowerCase();
+  const errCode = (params.get("error_code") || "").toLowerCase();
 
+  // Show friendly error immediately if link already includes an error (e.g., otp_expired)
+  if (err || errCode) {
+    const friendly =
+      errCode === "otp_expired" ? "This link has expired. Please request a new password reset." :
+      err ? `Error: ${err}` :
+      "Something went wrong. Please request a new link.";
+    $("#err-text").textContent = friendly;
+    show("view-error");
+    return;
+  }
+
+  // ---- Main flow ----
   (async () => {
     try {
-      // 1) Si viene token_hash (o token) de tipo recovery/email_change → verifyOtp
+      // Recovery / email change / invite via token_hash or code
       if (type === "recovery" || type === "email_change" || type === "invite") {
-        if (!token) throw new Error("Missing token for recovery/email change.");
-        // Intento 1: verifyOtp con token_hash (no requiere email para 'recovery' ni 'email_change')
+        if (!token) throw new Error("Missing token for this action.");
+
         let ok = false, lastErr = null;
+
+        // Try verifyOtp first (works with token_hash for recovery/email_change)
         try {
-          const { data, error } = await supabase.auth.verifyOtp({ type: type === "recovery" ? "recovery" : "email_change", token_hash: token });
+          const { error } = await supabase.auth.verifyOtp({
+            type: type === "recovery" ? "recovery" : "email_change",
+            token_hash: token
+          });
           if (error) throw error;
           ok = true;
         } catch (e) { lastErr = e; }
 
-        // Intento 2: exchangeCodeForSession (algunas configuraciones envían 'code')
+        // Fallback: try code exchange (some templates send 'code' instead)
         if (!ok) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+          const { error } = await supabase.auth.exchangeCodeForSession(token);
           if (error) throw error;
           ok = true;
         }
@@ -121,54 +148,43 @@
         if (!ok) throw lastErr || new Error("Link could not be verified.");
 
         if (type === "recovery") {
-          // Mostrar formulario de nueva contraseña
           show("view-recovery");
-          const form = $("#form-reset");
-          form.addEventListener("submit", async (ev)=>{
+          $("#form-reset").addEventListener("submit", async (ev)=>{
             ev.preventDefault();
             const p1 = $("#pwd1").value.trim();
             const p2 = $("#pwd2").value.trim();
             const msg = $("#msg-recovery");
             if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
-            if (p1 !== p2) { msg.textContent = "Passwords do not match."; return; }
+            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
             $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
-            const { data, error } = await supabase.auth.updateUser({ password: p1 });
-            if (error) {
-              $("#btn-reset").disabled = false;
-              msg.textContent = error.message || "Could not update password.";
-              return;
-            }
+            const { error } = await supabase.auth.updateUser({ password: p1 });
+            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
             show("view-done");
             setDeeplink("recovery_done");
           });
         } else {
-          // email_change / invite → solo confirmar y regresar a app
           show("view-verified");
           setDeeplink(type);
         }
         return;
       }
 
-      // 2) Magic link / signup verification (a veces llega 'code' o 'token')
+      // Magic link / signup / email verification via code
       if (type === "magiclink" || type === "signup" || type === "email_verification") {
         if (!token) throw new Error("Missing code.");
-        const { data, error } = await supabase.auth.exchangeCodeForSession(token);
+        const { error } = await supabase.auth.exchangeCodeForSession(token);
         if (error) throw error;
         show("view-verified");
         setDeeplink(type);
         return;
       }
 
-      // 3) Sin tipo reconocido → mostrar OK genérico si se puede, o error
+      // Generic attempt if we only received a code/token
       if (token) {
-        // Intento genérico
-        const { data, error } = await supabase.auth.exchangeCodeForSession(token);
-        if (!error) {
-          show("view-verified");
-          setDeeplink("done");
-          return;
-        }
+        const { error } = await supabase.auth.exchangeCodeForSession(token);
+        if (!error) { show("view-verified"); setDeeplink("done"); return; }
       }
+
       throw new Error("Unknown link type.");
     } catch (e) {
       console.error(e);
