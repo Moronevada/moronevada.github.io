@@ -81,47 +81,65 @@
   const show = (id)=>{["view-loading","view-verified","view-recovery","view-done","view-error"].forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden");}
 
   function setDeeplink(type){
-    const url = `${deeplinkBase}?type=${encodeURIComponent(type)}`;
-    $("#btn-deeplink").href = url;
-    $("#deeplink-code").textContent = url;
-    $("#btn-done-deeplink").href = url;
-    setTimeout(() => { window.location.href = url; setTimeout(()=>{ window.location.href = webFallback; }, 1200); }, 300);
+    const params = new URLSearchParams({ type });
+    const deep = `${deeplinkBase}?${params.toString()}`;
+    const isAndroid = /Android/i.test(navigator.userAgent);
+
+    $("#btn-deeplink").href = deep;
+    $("#deeplink-code").textContent = deep;
+    $("#btn-done-deeplink").href = deep;
+
+    // Intento automático + fallback visible
+    setTimeout(() => {
+      if (isAndroid) {
+        const intent = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;end`;
+        window.location.replace(intent);
+        setTimeout(() => { window.location.href = webFallback; }, 1400);
+      } else {
+        window.location.href = deep;
+        setTimeout(() => { window.location.href = webFallback; }, 1400);
+      }
+    }, 300);
   }
 
-// --- Read params from query + hash (some providers append errors in #) ---
-function getCombinedParams() {
-  const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
-  const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
-  const params = new URLSearchParams(q);
-  if (h) {
-    const hashParams = new URLSearchParams(h);
-    for (const [k, v] of hashParams.entries()) {
-      if (!params.has(k)) params.set(k, v);
+  // --- Read params from query + hash (some providers append errors in #) ---
+  function getCombinedParams() {
+    const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
+    const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+    const params = new URLSearchParams(q);
+    if (h) {
+      const hashParams = new URLSearchParams(h);
+      for (const [k, v] of hashParams.entries()) {
+        if (!params.has(k)) params.set(k, v);
+      }
     }
+    return params;
   }
-  return params;
-}
 
-const params  = getCombinedParams();
-const type    = (params.get("type") || "").toLowerCase();
-const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
-const err     = (params.get("error") || "").toLowerCase();
-const errCode = (params.get("error_code") || "").toLowerCase();
+  const params  = getCombinedParams();
+  const type    = (params.get("type") || "").toLowerCase();
+  const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
+  const err     = (params.get("error") || "").toLowerCase();
+  const errCode = (params.get("error_code") || "").toLowerCase();
 
-// Show friendly error immediately if link already includes an error
-if (err || errCode) {
-  const friendly =
-    errCode === "otp_expired"
-      ? "This link has expired. Please request a new password reset."
-      : errCode === "rate_limit" || err === "too_many_requests"
-      ? "Too many attempts. Please try again in a little while."
-      : err
-      ? `Error: ${err}`
-      : "Something went wrong. Please request a new link.";
-  document.getElementById("err-text").textContent = friendly;
-  show("view-error");
-  return;
-}
+  // Detectar access_token en hash (típico de magic link)
+  const hashOnly = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const hasAccessToken = !!hashOnly.get('access_token');
+
+  // Mostrar error amigable si el link ya incluye error
+  if (err || errCode) {
+    const friendly =
+      errCode === "otp_expired"
+        ? "This link has expired. Please request a new password reset."
+        : errCode === "rate_limit" || err === "too_many_requests"
+        ? "Too many attempts. Please try again in a little while."
+        : err
+        ? `Error: ${err}`
+        : "Something went wrong. Please request a new link.";
+    document.getElementById("err-text").textContent = friendly;
+    show("view-error");
+    return;
+  }
 
   // ---- Main flow ----
   (async () => {
@@ -132,7 +150,7 @@ if (err || errCode) {
 
         let ok = false, lastErr = null;
 
-        // Try verifyOtp first (works with token_hash for recovery/email_change)
+        // verifyOtp primero (token_hash para recovery / email_change)
         try {
           const { error } = await supabase.auth.verifyOtp({
             type: type === "recovery" ? "recovery" : "email_change",
@@ -142,7 +160,7 @@ if (err || errCode) {
           ok = true;
         } catch (e) { lastErr = e; }
 
-        // Fallback: try code exchange (some templates send 'code' instead)
+        // Fallback: exchange por si vino como 'code'
         if (!ok) {
           const { error } = await supabase.auth.exchangeCodeForSession(token);
           if (error) throw error;
@@ -173,17 +191,32 @@ if (err || errCode) {
         return;
       }
 
-      // Magic link / signup / email verification via code
-      if (type === "magiclink" || type === "signup" || type === "email_verification") {
-        if (!token) throw new Error("Missing code.");
-        const { error } = await supabase.auth.exchangeCodeForSession(token);
-        if (error) throw error;
+      // MAGIC LINK (normalmente con #access_token)
+      if (type === "magiclink" || hasAccessToken) {
         show("view-verified");
-        setDeeplink(type);
+        setDeeplink("magiclink");
         return;
       }
 
-      // Generic attempt if we only received a code/token
+      // SIGNUP / EMAIL VERIFICATION (usa token_hash y verifyOtp, no exchange)
+      if (type === "signup" || type === "email_verification") {
+        if (!token) throw new Error("Missing token.");
+        const { error } = await supabase.auth.verifyOtp({
+          type: "signup",
+          token_hash: token
+        });
+        if (error) {
+          // Si ya fue usado, puede dar error aunque esté verificado; sólo bloquea si es expirado.
+          if ((error.status || 400) === 400 && /expired/i.test(error.message || "")) {
+            throw error;
+          }
+        }
+        show("view-verified");
+        setDeeplink("signup");
+        return;
+      }
+
+      // Intento genérico si sólo recibimos 'code'/'token'
       if (token) {
         const { error } = await supabase.auth.exchangeCodeForSession(token);
         if (!error) { show("view-verified"); setDeeplink("done"); return; }
