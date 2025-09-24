@@ -71,7 +71,7 @@
 
   // App deep link + web fallback
   const deeplinkBase = "easycare://auth-success";
-  const webFallback  = "https://easycarehh.com";
+  const webFallback  = "https://easycarehh.com"; // cámbialo si quieres otra landing
 
   // Supabase client
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -83,7 +83,6 @@
   function setDeeplink(type){
     const params = new URLSearchParams({ type });
     const deep = `${deeplinkBase}?${params.toString()}`;
-    const isAndroid = /Android/i.test(navigator.userAgent);
 
     $("#btn-deeplink").href = deep;
     $("#deeplink-code").textContent = deep;
@@ -91,14 +90,8 @@
 
     // Intento automático + fallback visible
     setTimeout(() => {
-      if (isAndroid) {
-        const intent = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;end`;
-        window.location.replace(intent);
-        setTimeout(() => { window.location.href = webFallback; }, 1400);
-      } else {
-        window.location.href = deep;
-        setTimeout(() => { window.location.href = webFallback; }, 1400);
-      }
+      window.location.href = deep;                  // abrir la app
+      setTimeout(() => { window.location.href = webFallback; }, 1400); // fallback web
     }, 300);
   }
 
@@ -136,7 +129,7 @@
         : err
         ? `Error: ${err}`
         : "Something went wrong. Please request a new link.";
-    document.getElementById("err-text").textContent = friendly;
+    $("#err-text").textContent = friendly;
     show("view-error");
     return;
   }
@@ -150,11 +143,11 @@
 
         let ok = false, lastErr = null;
 
-        // verifyOtp primero (token_hash para recovery / email_change)
+        // verifyOtp primero (tokenHash para recovery / email_change)
         try {
           const { error } = await supabase.auth.verifyOtp({
             type: type === "recovery" ? "recovery" : "email_change",
-            token_hash: token
+            tokenHash: token  // <- v2 usa camelCase
           });
           if (error) throw error;
           ok = true;
@@ -182,11 +175,11 @@
             const { error } = await supabase.auth.updateUser({ password: p1 });
             if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
             show("view-done");
-            setDeeplink("recovery_done");
+            setDeeplink("recovery_done"); // <- tu AuthGate lo maneja
           });
         } else {
           show("view-verified");
-          setDeeplink(type);
+          setDeeplink("verify"); // <- más semántico para tu AuthGate
         }
         return;
       }
@@ -194,16 +187,16 @@
       // MAGIC LINK (normalmente con #access_token)
       if (type === "magiclink" || hasAccessToken) {
         show("view-verified");
-        setDeeplink("magiclink");
+        setDeeplink("magiclink"); // opcional, tu app puede ignorarlo
         return;
       }
 
-      // SIGNUP / EMAIL VERIFICATION (usa token_hash y verifyOtp, no exchange)
+      // SIGNUP / EMAIL VERIFICATION (usa tokenHash y verifyOtp, no exchange)
       if (type === "signup" || type === "email_verification") {
         if (!token) throw new Error("Missing token.");
         const { error } = await supabase.auth.verifyOtp({
           type: "signup",
-          token_hash: token
+          tokenHash: token
         });
         if (error) {
           // Si ya fue usado, puede dar error aunque esté verificado; sólo bloquea si es expirado.
@@ -212,14 +205,14 @@
           }
         }
         show("view-verified");
-        setDeeplink("signup");
+        setDeeplink("verify"); // <- tu app lo muestra como email verificado
         return;
       }
 
       // Intento genérico si sólo recibimos 'code'/'token'
       if (token) {
         const { error } = await supabase.auth.exchangeCodeForSession(token);
-        if (!error) { show("view-verified"); setDeeplink("done"); return; }
+        if (!error) { show("view-verified"); setDeeplink("verify"); return; }
       }
 
       throw new Error("Unknown link type.");
