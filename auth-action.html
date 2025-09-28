@@ -80,25 +80,42 @@
   const $ = (id)=>document.getElementById(id);
   const show = (id)=>{["view-loading","view-verified","view-recovery","view-done","view-error"].forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden");}
 
-  function setDeeplink(type){
+   function setDeeplink(type){
     const params = new URLSearchParams({ type });
-    const deep = `${deeplinkBase}?${params.toString()}`;
+    const deepScheme = `easycare://auth-success?${params.toString()}`;
+
+    // IMPORTANTE: usa tu package exacto del AndroidManifest
+    const androidPackage = 'easycare.com.easycare_app';
+    const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
+
     const isAndroid = /Android/i.test(navigator.userAgent);
 
-    $("#btn-deeplink").href = deep;
-    $("#deeplink-code").textContent = deep;
-    $("#btn-done-deeplink").href = deep;
+    // Pinta el botón y el texto alternativo
+    const btn = document.getElementById('btn-deeplink');
+    const code = document.getElementById('deeplink-code');
+    btn.href = isAndroid ? intentUrl : deepScheme;  // botón usa intent:// en Android
+    code.textContent = deepScheme;
 
-    // Intento automático + fallback visible
+    // Handler explícito por si Chrome requiere gesto del usuario
+    btn.addEventListener('click', (e) => {
+      try {
+        if (isAndroid) {
+          // Abre con intent:// (mejor compatibilidad)
+          window.location.href = intentUrl;
+        } else {
+          window.location.href = deepScheme;
+        }
+      } catch (_) {}
+    }, { once: true });
+
+    // Intento automático + fallback visible (por si auto-lanzar está permitido)
     setTimeout(() => {
       if (isAndroid) {
-        // Android intent (algunos navegadores lo prefieren)
-        const intent = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;end`;
-        window.location.replace(intent);
-        setTimeout(() => { window.location.href = webFallback; }, 1400);
+        window.location.replace(intentUrl);
+        setTimeout(() => { window.location.href = 'https://easycarehh.com'; }, 1500);
       } else {
-        window.location.href = deep;
-        setTimeout(() => { window.location.href = webFallback; }, 1400);
+        window.location.href = deepScheme;
+        setTimeout(() => { window.location.href = 'https://easycarehh.com'; }, 1500);
       }
     }, 300);
   }
