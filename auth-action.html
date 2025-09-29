@@ -91,6 +91,10 @@
   log('type:', type, 'fragType:', fragType);
   log('token_hash present:', !!tokenHash, 'code present:', !!code);
 
+  if (tokenHash) log("Detectado flujo: token_hash clásico");
+  if (code && code.startsWith("pkce_")) log("Detectado flujo: PKCE exchange");
+  if (code && !code.startsWith("pkce_") && code) log("Detectado flujo: code simple fallback");
+
   if (err || errCode) {
     const msg =
       errCode === "otp_expired" ? "This link has expired. Please request a new one." :
