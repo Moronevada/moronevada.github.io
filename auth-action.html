@@ -10,11 +10,6 @@
     h1{font-size:20px;margin:0 0 12px}
     p{margin:8px 0 14px;color:#333}
     .muted{color:#667085;font-size:14px}
-    input[type=password]{width:100%;padding:12px 14px;border:1px solid #d0d5dd;border-radius:10px;font-size:16px}
-    button{width:100%;margin-top:14px;padding:12px 14px;border:0;border-radius:10px;background:#0f766e;color:#fff;font-weight:600;font-size:16px;cursor:pointer}
-    button[disabled]{opacity:.6;cursor:not-allowed}
-    .ok{color:#067647}
-    .err{color:#b42318}
     .hidden{display:none}
     .center{text-align:center}
     .spinner{display:inline-block;width:18px;height:18px;border:3px solid #e5e7eb;border-top-color:#0f766e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-3px;margin-right:8px}
@@ -36,31 +31,12 @@
     <p class="muted">You can safely return to the app.</p>
     <div class="center">
       <a class="btn" id="btn-deeplink" href="#">Open EasyCare</a>
-      <div class="note muted">If it doesn’t open, copy this URL into your browser: <code id="deeplink-code"></code></div>
-    </div>
-  </div>
-
-  <div class="card hidden" id="view-recovery">
-    <h1>Reset your password</h1>
-    <p class="muted">Enter a new password for your account.</p>
-    <form id="form-reset">
-      <input id="pwd1" type="password" placeholder="New password" minlength="8" required />
-      <input id="pwd2" type="password" placeholder="Confirm password" minlength="8" required style="margin-top:10px" />
-      <button id="btn-reset" type="submit">Set new password</button>
-      <p class="muted" id="msg-recovery"></p>
-    </form>
-  </div>
-
-  <div class="card hidden" id="view-done">
-    <h1 class="ok">Password updated</h1>
-    <p>Your password was changed successfully.</p>
-    <div class="center">
-      <a class="btn" id="btn-done-deeplink" href="#">Return to EasyCare</a>
+      <div class="note muted">If it doesn’t open, copy this URL: <code id="deeplink-code"></code></div>
     </div>
   </div>
 
   <div class="card hidden" id="view-error">
-    <h1 class="err">Something went wrong</h1>
+    <h1 style="color:#b42318">Something went wrong</h1>
     <p id="err-text">Invalid or expired link.</p>
   </div>
 
@@ -70,21 +46,17 @@
   const SUPABASE_URL = "https://tcobgzhtmuxzjdkmwdsy.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0";
 
-  const deeplinkBase = "easycare://auth-success";
-  const webFallback  = "https://easycarehh.com";
-
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ---- Debug helper (visible) ----
-  const debugBox = document.createElement('pre');
-  debugBox.className = 'debug';
-  document.body.appendChild(debugBox);
-  const log = (...a)=>{ try { console.log(...a); } catch(_) {} debugBox.textContent += a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\n'; };
+  const deeplinkBase = "easycare://auth-success";
+  const webFallback  = "https://easycarehh.com";
+  const resetPage    = "https://moronevada.github.io/reset-password.html";
 
-  // ---- UI helpers ----
+  // ---- helpers UI / debug ----
   const $ = (id)=>document.getElementById(id);
-  const allViews = ["view-loading","view-verified","view-recovery","view-done","view-error"];
-  const show = (id)=>{ allViews.forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden"); }
+  const show = (id)=>["view-loading","view-verified","view-error"].forEach(x=>$(x).classList.toggle("hidden", x!==id));
+  const dbg = document.createElement('pre'); dbg.className='debug'; document.body.appendChild(dbg);
+  const log = (...a)=>{ try{console.log(...a);}catch{} dbg.textContent += a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\n'; };
 
   function setDeeplink(type){
     const params = new URLSearchParams({ type });
@@ -94,241 +66,135 @@
     const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
     const isAndroid = /Android/i.test(navigator.userAgent);
 
-    const btn = document.getElementById('btn-deeplink') || document.getElementById('btn-done-deeplink');
+    const btn = document.getElementById('btn-deeplink');
     const code = document.getElementById('deeplink-code');
     if (btn) btn.href = isAndroid ? intentUrl : deep;
     if (code) code.textContent = deep;
 
-    if (btn) btn.addEventListener('click', () => {
-      try { window.location.href = isAndroid ? intentUrl : deep; } catch (_) {}
-    }, { once: true });
+    if (btn) btn.addEventListener('click', ()=>{ try{window.location.href = isAndroid ? intentUrl : deep;}catch{} }, { once:true });
 
-    // intento automático + fallback
-    setTimeout(() => {
+    setTimeout(()=>{
       if (isAndroid) {
         window.location.replace(intentUrl);
-        setTimeout(() => { window.location.href = webFallback; }, 1500);
+        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
       } else {
         window.location.href = deep;
-        setTimeout(() => { window.location.href = webFallback; }, 1500);
+        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
       }
     }, 300);
   }
 
-  // Lee query + hash
-  function getCombinedParams() {
-    const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
-    const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  // Unifica query + hash (#)
+  function combinedParams(){
+    const q = window.location.search.slice(1);
+    const h = window.location.hash.replace(/^#/,'');
     const params = new URLSearchParams(q);
     if (h) {
-      const hashParams = new URLSearchParams(h);
-      for (const [k, v] of hashParams.entries()) if (!params.has(k)) params.set(k, v);
+      const hp = new URLSearchParams(h);
+      for (const [k,v] of hp.entries()) if (!params.has(k)) params.set(k,v);
     }
     return params;
   }
 
-  const params  = getCombinedParams();
-  const type    = (params.get("type") || "").toLowerCase();
-  const tokenFromParams = params.get("token") || params.get("token_hash") || params.get("code") || "";
-  const err     = (params.get("error") || "").toLowerCase();
-  const errCode = (params.get("error_code") || "").toLowerCase();
+  const params = combinedParams();
+  const type   = (params.get("type") || "").toLowerCase();
 
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  // Tokens posibles
+  const tokenHash = params.get("token_hash") || params.get("token") || ""; // preferimos token_hash ALWAYS
+  const code      = params.get("code") || "";                               // PKCE code (lo ignoramos si no hay code_verifier)
+  const codeVer   = params.get("code_verifier") || "";
+
+  // Fragment tokens (implicit)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/,''));
   const accessToken  = hash.get('access_token') || params.get('access_token');
   const refreshToken = hash.get('refresh_token') || params.get('refresh_token');
   const fragType     = (hash.get('type') || '').toLowerCase();
-  const hasAccessToken = !!accessToken;
+
+  const err     = (params.get("error") || "").toLowerCase();
+  const errCode = (params.get("error_code") || "").toLowerCase();
 
   log('href:', window.location.href);
   log('type:', type, 'fragType:', fragType);
-  log('tokenFromParams:', tokenFromParams ? '[present]' : '(empty)');
-  log('hasAccessToken:', hasAccessToken);
-
-  if (!type && !tokenFromParams && !hasAccessToken) {
-    $("view-loading").classList.add("hidden");
-    const el = document.createElement("div");
-    el.className = "card";
-    el.innerHTML = `
-      <h1>Open this page from your email</h1>
-      <p class="muted">This page processes secure links for signup verification, magic link and password reset. Please use the button from the email we sent you.</p>
-      <div class="center"><a class="btn" href="/">Go to EasyCare Home</a></div>`;
-    document.body.appendChild(el);
-    return;
-  }
+  log('token_hash present:', !!tokenHash, 'code present:', !!code, 'code_verifier present:', !!codeVer);
+  log('has access_token:', !!accessToken);
 
   if (err || errCode) {
-    const friendly =
-      errCode === "otp_expired"
-        ? "This link has expired. Please request a new one."
-        : errCode === "rate_limit" || err === "too_many_requests"
-        ? "Too many attempts. Please try again in a little while."
-        : err
-        ? `Error: ${err}`
-        : "Something went wrong. Please request a new link.";
-    $("#err-text").textContent = friendly;
+    const msg =
+      errCode === "otp_expired" ? "This link has expired. Please request a new one." :
+      errCode === "rate_limit" || err === "too_many_requests" ? "Too many attempts. Please try again shortly." :
+      err ? `Error: ${err}` : "Something went wrong. Please request a new link.";
+    $("#err-text").textContent = msg;
     show("view-error");
     return;
   }
 
-  // ---- Main flow ----
+  // Si alguien cae aquí con recovery, reenvía a la página dedicada preservando query+hash
+  if (type === 'recovery' || fragType === 'recovery') {
+    const next = resetPage + window.location.search + window.location.hash;
+    log('redirect -> reset-password.html', next);
+    window.location.replace(next);
+    return;
+  }
+
+  if (!type && !tokenHash && !accessToken) {
+    $("#err-text").textContent = "Open this page from a valid email link.";
+    show("view-error");
+    return;
+  }
+
   (async () => {
     try {
-      // 1) RECOVERY (reset password) – soporta tokens en fragmento, token_hash y code
-      if (type === "recovery" || fragType === "recovery") {
-        // A) tokens en fragmento (moderno)
+      // MAGIC LINK
+      if (type === 'magiclink' || (accessToken && fragType !== 'recovery')) {
         if (accessToken && refreshToken) {
-          const { error: sErr } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          });
-          if (sErr) throw sErr;
-
-          show("view-recovery");
-          $("#form-reset").addEventListener("submit", async (ev)=>{
-            ev.preventDefault();
-            const p1 = $("#pwd1").value.trim();
-            const p2 = $("#pwd2").value.trim();
-            const msg = $("#msg-recovery");
-            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
-            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
-            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
-            const { error } = await supabase.auth.updateUser({ password: p1 });
-            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
-            show("view-done");
-            setDeeplink("recovery_done");
-          });
-          return;
-        }
-
-        // B) token_hash legado
-        if (params.get("token_hash")) {
-          let ok = false, lastErr = null;
-          try {
-            const { error } = await supabase.auth.verifyOtp({
-              type: "recovery",
-              token_hash: params.get("token_hash")
-            });
-            if (error) throw error;
-            ok = true; log('verifyOtp recovery (token_hash) OK');
-          } catch(e){ lastErr = e; log('verifyOtp recovery (token_hash) FAIL:', e?.message || e); }
-
-          if (!ok) throw lastErr || new Error('Recovery verify failed');
-
-          const { data, error: e2 } = await supabase.auth.getSession();
-          if (e2 || !data.session) throw e2 || new Error('No session after verifyOtp');
-
-          show("view-recovery");
-          $("#form-reset").addEventListener("submit", async (ev)=>{
-            ev.preventDefault();
-            const p1 = $("#pwd1").value.trim();
-            const p2 = $("#pwd2").value.trim();
-            const msg = $("#msg-recovery");
-            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
-            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
-            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
-            const { error } = await supabase.auth.updateUser({ password: p1 });
-            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
-            show("view-done");
-            setDeeplink("recovery_done");
-          });
-          return;
-        }
-
-        // C) ?code=... (nuevo)
-        if (params.get("code")) {
-          const { error } = await supabase.auth.exchangeCodeForSession(params.get("code"));
-          if (error) throw error;
-
-          show("view-recovery");
-          $("#form-reset").addEventListener("submit", async (ev)=>{
-            ev.preventDefault();
-            const p1 = $("#pwd1").value.trim();
-            const p2 = $("#pwd2").value.trim();
-            const msg = $("#msg-recovery");
-            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
-            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
-            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
-            const { error } = await supabase.auth.updateUser({ password: p1 });
-            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
-            show("view-done");
-            setDeeplink("recovery_done");
-          });
-          return;
-        }
-
-        throw new Error("Missing token(s) for recovery.");
-      }
-
-      // 2) MAGIC LINK (si no es recovery)
-      if (type === "magiclink" || (hasAccessToken && fragType !== "recovery")) {
-        // Si viene con access_token, setSession para asegurar login en web
-        if (hasAccessToken && refreshToken) {
-          const { error: sErr } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          });
-          if (sErr) log('setSession (magiclink) WARN:', sErr?.message || sErr);
+          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (error) log('setSession(magiclink) WARN:', error.message || error);
         }
         show("view-verified");
         setDeeplink("magiclink");
         return;
       }
 
-      // 3) SIGNUP / EMAIL VERIFICATION / INVITE (robusto)
-      if (type === "signup" || type === "email_verification" || type === "invite" || type === "email_change") {
-        if (!tokenFromParams) {
-          throw new Error("Missing token for verification (no token/code in URL).");
-        }
+      // SIGNUP / INVITE / EMAIL CHANGE
+      if (['signup','invite','email_change','email_verification'].includes(type)) {
+        let ok = false, lastErr = null;
 
-        let verified = false, lastErr = null;
-
-        // a) verifyOtp snake_case
-        try {
-          const { error } = await supabase.auth.verifyOtp({
-            type: (type === "email_change") ? "email_change" : "signup",
-            token_hash: tokenFromParams
-          });
-          if (error) throw error;
-          verified = true; log(`verifyOtp ${type} (token_hash) OK`);
-        } catch(e){ lastErr = e; log(`verifyOtp ${type} (token_hash) FAIL:`, e?.message || e); }
-
-        // b) verifyOtp camelCase
-        if (!verified) {
+        // 1) SIEMPRE intentar verifyOtp con token_hash (forzado)
+        if (tokenHash) {
           try {
             const { error } = await supabase.auth.verifyOtp({
-              type: (type === "email_change") ? "email_change" : "signup",
-              tokenHash: tokenFromParams
+              type: (type === 'email_change') ? 'email_change' : 'signup',
+              token_hash: tokenHash
             });
             if (error) throw error;
-            verified = true; log(`verifyOtp ${type} (tokenHash) OK`);
-          } catch(e){ lastErr = e; log(`verifyOtp ${type} (tokenHash) FAIL:`, e?.message || e); }
+            ok = true; log('verifyOtp(token_hash) OK');
+          } catch (e) { lastErr = e; log('verifyOtp(token_hash) FAIL:', e?.message || e); }
         }
 
-        // c) fallback con code
-        if (!verified) {
+        // 2) Solo si NO se pudo y realmente viene PKCE COMPLETO (code + code_verifier), intentamos exchange
+        if (!ok && code && codeVer) {
           try {
-            const { error } = await supabase.auth.exchangeCodeForSession(tokenFromParams);
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) throw error;
-            verified = true; log('exchangeCodeForSession OK');
-          } catch(e){ lastErr = e; log('exchangeCodeForSession FAIL:', e?.message || e); }
+            ok = true; log('exchangeCodeForSession OK');
+          } catch (e) { lastErr = e; log('exchangeCodeForSession FAIL:', e?.message || e); }
         }
 
-        if (!verified) throw lastErr || new Error("Link could not be verified.");
+        if (!ok) throw lastErr || new Error('Link could not be verified.');
 
         show("view-verified");
-        setDeeplink(type === "invite" ? "invite" : "verify");
+        setDeeplink(type === 'invite' ? 'invite' : 'verify');
         return;
       }
 
-      // 4) Fallback: intentar code→session genérico
-      if (tokenFromParams) {
-        const { error } = await supabase.auth.exchangeCodeForSession(tokenFromParams);
+      // Fallback: si llega un code COMPLETO (poco probable aquí)
+      if (code && codeVer) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!error) { show("view-verified"); setDeeplink("verify"); return; }
       }
 
-      throw new Error("Unknown link type.");
+      throw new Error('Unknown or unsupported link.');
     } catch (e) {
-      console.error(e);
       log('FINAL ERROR:', e?.message || e);
       $("#err-text").textContent = e?.message || "Invalid or expired link.";
       show("view-error");
