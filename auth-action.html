@@ -42,7 +42,6 @@
 
 <script>
 (function(){
-  // ---- CONFIG ----
   const SUPABASE_URL = "https://tcobgzhtmuxzjdkmwdsy.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0";
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -51,7 +50,6 @@
   const webFallback  = "https://easycarehh.com";
   const resetPage    = "https://moronevada.github.io/reset-password.html";
 
-  // ---- helpers UI / debug ----
   const $ = (id)=>document.getElementById(id);
   const show = (id)=>["view-loading","view-verified","view-error"].forEach(x=>$(x).classList.toggle("hidden", x!==id));
   const dbg = document.createElement('pre'); dbg.className='debug'; document.body.appendChild(dbg);
@@ -63,26 +61,14 @@
     const androidPackage = 'easycare.com.easycare_app';
     const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
     const isAndroid = /Android/i.test(navigator.userAgent);
-
     const btn = document.getElementById('btn-deeplink');
     const code = document.getElementById('deeplink-code');
     if (btn) btn.href = isAndroid ? intentUrl : deep;
     if (code) code.textContent = deep;
-
     if (btn) btn.addEventListener('click', ()=>{ try{window.location.href = isAndroid ? intentUrl : deep;}catch{} }, { once:true });
-
-    setTimeout(()=>{
-      if (isAndroid) {
-        window.location.replace(intentUrl);
-        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
-      } else {
-        window.location.href = deep;
-        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
-      }
-    }, 300);
+    setTimeout(()=>{ if (isAndroid) { window.location.replace(intentUrl); setTimeout(()=>{ window.location.href = webFallback; }, 1500); } else { window.location.href = deep; setTimeout(()=>{ window.location.href = webFallback; }, 1500); } }, 300);
   }
 
-  // Unifica query + hash (#)
   function combinedParams(){
     const q = window.location.search.slice(1);
     const h = window.location.hash.replace(/^#/,'');
@@ -97,12 +83,11 @@
   const params = combinedParams();
   const type   = (params.get("type") || "").toLowerCase();
 
-  // Tokens posibles
-  const tokenHash = params.get("token_hash") || params.get("token") || ""; // preferimos token_hash
-  const code      = params.get("code") || "";                               // PKCE code
+  const tokenHash = params.get("token_hash") || params.get("token") || "";
+  const code      = params.get("code") || "";
   const codeVer   = params.get("code_verifier") || "";
+  const email     = params.get("email") || "";   // <-- lo usaremos si hace falta
 
-  // Fragment tokens (implicit)
   const hash = new URLSearchParams(window.location.hash.replace(/^#/,''));
   const accessToken  = hash.get('access_token') || params.get('access_token');
   const refreshToken = hash.get('refresh_token') || params.get('refresh_token');
@@ -114,6 +99,7 @@
   log('href:', window.location.href);
   log('type:', type, 'fragType:', fragType);
   log('token_hash present:', !!tokenHash, 'code present:', !!code, 'code_verifier present:', !!codeVer);
+  log('email present:', !!email);
   log('has access_token:', !!accessToken);
 
   if (err || errCode) {
@@ -126,7 +112,6 @@
     return;
   }
 
-  // Si alguien cae aquí con recovery, reenvía a la página dedicada preservando query+hash
   if (type === 'recovery' || fragType === 'recovery') {
     const next = resetPage + window.location.search + window.location.hash;
     log('redirect -> reset-password.html', next);
@@ -169,15 +154,17 @@
           } catch (e) { lastErr = e; log("verifyOtp(token_hash) FAIL:", e?.message || e); }
         }
 
-        // b) verifyOtp con token (cuando llega ?code=... SIN code_verifier)
+        // b) verifyOtp con token (cuando llega ?code=... SIN code_verifier) —> REQUIERE EMAIL
         if (code && !ok && !codeVer) {
           try {
-            const { error } = await supabase.auth.verifyOtp({
+            const payload = {
               type: (type === "email_change") ? "email_change" : "signup",
               token: code
-            });
+            };
+            if (email) payload.email = email;   // <-- agregado
+            const { error } = await supabase.auth.verifyOtp(payload);
             if (error) throw error;
-            ok = true; log("verifyOtp(code as token) OK");
+            ok = true; log("verifyOtp(code as token) OK (with email)");
           } catch (e) { lastErr = e; log("verifyOtp(code as token) FAIL:", e?.message || e); }
         }
 
