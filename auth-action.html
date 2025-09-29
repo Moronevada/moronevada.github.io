@@ -21,6 +21,7 @@
     @keyframes spin{to{transform:rotate(360deg)}}
     a.btn{display:inline-block;margin-top:10px;padding:10px 14px;background:#0f766e;color:#fff;border-radius:10px;text-decoration:none;font-weight:600}
     .note{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-top:10px}
+    pre.debug{white-space:pre-wrap;font-size:12px;color:#666;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:8px;margin:12px auto;max-width:520px}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -74,12 +75,21 @@
 
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  // ---- Debug helper (visible) ----
+  const debugBox = document.createElement('pre');
+  debugBox.className = 'debug';
+  document.body.appendChild(debugBox);
+  const log = (...a)=>{ try { console.log(...a); } catch(_) {} debugBox.textContent += a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\n'; };
+
+  // ---- UI helpers ----
   const $ = (id)=>document.getElementById(id);
-  const show = (id)=>{["view-loading","view-verified","view-recovery","view-done","view-error"].forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden");}
-  
+  const allViews = ["view-loading","view-verified","view-recovery","view-done","view-error"];
+  const show = (id)=>{ allViews.forEach(x=>$(x).classList.add("hidden")); $(id).classList.remove("hidden"); }
+
   function setDeeplink(type){
     const params = new URLSearchParams({ type });
     const deep = `${deeplinkBase}?${params.toString()}`;
+
     const androidPackage = 'easycare.com.easycare_app';
     const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
     const isAndroid = /Android/i.test(navigator.userAgent);
@@ -93,6 +103,7 @@
       try { window.location.href = isAndroid ? intentUrl : deep; } catch (_) {}
     }, { once: true });
 
+    // intento automático + fallback
     setTimeout(() => {
       if (isAndroid) {
         window.location.replace(intentUrl);
@@ -104,6 +115,7 @@
     }, 300);
   }
 
+  // Lee query + hash
   function getCombinedParams() {
     const q = window.location.search.startsWith('?') ? window.location.search.slice(1) : '';
     const h = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
@@ -117,7 +129,7 @@
 
   const params  = getCombinedParams();
   const type    = (params.get("type") || "").toLowerCase();
-  const token   = params.get("token") || params.get("token_hash") || params.get("code") || "";
+  const tokenFromParams = params.get("token") || params.get("token_hash") || params.get("code") || "";
   const err     = (params.get("error") || "").toLowerCase();
   const errCode = (params.get("error_code") || "").toLowerCase();
 
@@ -127,24 +139,18 @@
   const fragType     = (hash.get('type') || '').toLowerCase();
   const hasAccessToken = !!accessToken;
 
-  // 🔁 Router inmediato para recovery: manda a reset-password.html con query + hash
-  const hashStr = window.location.hash || "";
-  const isRecovery = type === "recovery" || /(^|[?&#])type=recovery/i.test(hashStr);
-  if (isRecovery) {
-    const passThrough = window.location.search + window.location.hash;
-    const ts = Date.now(); // cache-buster
-    window.location.replace("https://moronevada.github.io/reset-password.html" +
-                            passThrough + (passThrough ? "&" : "?") + "v=" + ts);
-    return;
-  }
+  log('href:', window.location.href);
+  log('type:', type, 'fragType:', fragType);
+  log('tokenFromParams:', tokenFromParams ? '[present]' : '(empty)');
+  log('hasAccessToken:', hasAccessToken);
 
-  if (!type && !token && !hasAccessToken) {
-    document.getElementById("view-loading").classList.add("hidden");
+  if (!type && !tokenFromParams && !hasAccessToken) {
+    $("view-loading").classList.add("hidden");
     const el = document.createElement("div");
     el.className = "card";
     el.innerHTML = `
       <h1>Open this page from your email</h1>
-      <p class="muted">This page processes secure links for signup verification and password reset. Please use the button from the email we sent you.</p>
+      <p class="muted">This page processes secure links for signup verification, magic link and password reset. Please use the button from the email we sent you.</p>
       <div class="center"><a class="btn" href="/">Go to EasyCare Home</a></div>`;
     document.body.appendChild(el);
     return;
@@ -152,36 +158,178 @@
 
   if (err || errCode) {
     const friendly =
-      errCode === "otp_expired" ? "This link has expired. Please request a new password reset." :
-      errCode === "rate_limit" || err === "too_many_requests" ? "Too many attempts. Please try again in a little while." :
-      err ? `Error: ${err}` : "Something went wrong. Please request a new link.";
+      errCode === "otp_expired"
+        ? "This link has expired. Please request a new one."
+        : errCode === "rate_limit" || err === "too_many_requests"
+        ? "Too many attempts. Please try again in a little while."
+        : err
+        ? `Error: ${err}`
+        : "Something went wrong. Please request a new link.";
     $("#err-text").textContent = friendly;
     show("view-error");
     return;
   }
 
-  // ---- Main flow (verify/magic/signup) ----
+  // ---- Main flow ----
   (async () => {
     try {
+      // 1) RECOVERY (reset password) – soporta tokens en fragmento, token_hash y code
+      if (type === "recovery" || fragType === "recovery") {
+        // A) tokens en fragmento (moderno)
+        if (accessToken && refreshToken) {
+          const { error: sErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          if (sErr) throw sErr;
+
+          show("view-recovery");
+          $("#form-reset").addEventListener("submit", async (ev)=>{
+            ev.preventDefault();
+            const p1 = $("#pwd1").value.trim();
+            const p2 = $("#pwd2").value.trim();
+            const msg = $("#msg-recovery");
+            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
+            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
+            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
+            const { error } = await supabase.auth.updateUser({ password: p1 });
+            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
+            show("view-done");
+            setDeeplink("recovery_done");
+          });
+          return;
+        }
+
+        // B) token_hash legado
+        if (params.get("token_hash")) {
+          let ok = false, lastErr = null;
+          try {
+            const { error } = await supabase.auth.verifyOtp({
+              type: "recovery",
+              token_hash: params.get("token_hash")
+            });
+            if (error) throw error;
+            ok = true; log('verifyOtp recovery (token_hash) OK');
+          } catch(e){ lastErr = e; log('verifyOtp recovery (token_hash) FAIL:', e?.message || e); }
+
+          if (!ok) throw lastErr || new Error('Recovery verify failed');
+
+          const { data, error: e2 } = await supabase.auth.getSession();
+          if (e2 || !data.session) throw e2 || new Error('No session after verifyOtp');
+
+          show("view-recovery");
+          $("#form-reset").addEventListener("submit", async (ev)=>{
+            ev.preventDefault();
+            const p1 = $("#pwd1").value.trim();
+            const p2 = $("#pwd2").value.trim();
+            const msg = $("#msg-recovery");
+            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
+            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
+            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
+            const { error } = await supabase.auth.updateUser({ password: p1 });
+            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
+            show("view-done");
+            setDeeplink("recovery_done");
+          });
+          return;
+        }
+
+        // C) ?code=... (nuevo)
+        if (params.get("code")) {
+          const { error } = await supabase.auth.exchangeCodeForSession(params.get("code"));
+          if (error) throw error;
+
+          show("view-recovery");
+          $("#form-reset").addEventListener("submit", async (ev)=>{
+            ev.preventDefault();
+            const p1 = $("#pwd1").value.trim();
+            const p2 = $("#pwd2").value.trim();
+            const msg = $("#msg-recovery");
+            if (p1.length < 8) { msg.textContent = "Use at least 8 characters."; return; }
+            if (p1 !== p2)   { msg.textContent = "Passwords do not match.";   return; }
+            $("#btn-reset").disabled = true; msg.innerHTML = '<span class="spinner"></span>Updating…';
+            const { error } = await supabase.auth.updateUser({ password: p1 });
+            if (error) { $("#btn-reset").disabled = false; msg.textContent = error.message || "Could not update password."; return; }
+            show("view-done");
+            setDeeplink("recovery_done");
+          });
+          return;
+        }
+
+        throw new Error("Missing token(s) for recovery.");
+      }
+
+      // 2) MAGIC LINK (si no es recovery)
       if (type === "magiclink" || (hasAccessToken && fragType !== "recovery")) {
-        show("view-verified"); setDeeplink("magiclink"); return;
+        // Si viene con access_token, setSession para asegurar login en web
+        if (hasAccessToken && refreshToken) {
+          const { error: sErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          if (sErr) log('setSession (magiclink) WARN:', sErr?.message || sErr);
+        }
+        show("view-verified");
+        setDeeplink("magiclink");
+        return;
       }
 
-      if (type === "signup" || type === "email_verification") {
-        if (!token) throw new Error("Missing token.");
-        const { error } = await supabase.auth.verifyOtp({ type: "signup", token_hash: token });
-        if (error && /expired/i.test(error.message || "")) throw error;
-        show("view-verified"); setDeeplink("verify"); return;
+      // 3) SIGNUP / EMAIL VERIFICATION / INVITE (robusto)
+      if (type === "signup" || type === "email_verification" || type === "invite" || type === "email_change") {
+        if (!tokenFromParams) {
+          throw new Error("Missing token for verification (no token/code in URL).");
+        }
+
+        let verified = false, lastErr = null;
+
+        // a) verifyOtp snake_case
+        try {
+          const { error } = await supabase.auth.verifyOtp({
+            type: (type === "email_change") ? "email_change" : "signup",
+            token_hash: tokenFromParams
+          });
+          if (error) throw error;
+          verified = true; log(`verifyOtp ${type} (token_hash) OK`);
+        } catch(e){ lastErr = e; log(`verifyOtp ${type} (token_hash) FAIL:`, e?.message || e); }
+
+        // b) verifyOtp camelCase
+        if (!verified) {
+          try {
+            const { error } = await supabase.auth.verifyOtp({
+              type: (type === "email_change") ? "email_change" : "signup",
+              tokenHash: tokenFromParams
+            });
+            if (error) throw error;
+            verified = true; log(`verifyOtp ${type} (tokenHash) OK`);
+          } catch(e){ lastErr = e; log(`verifyOtp ${type} (tokenHash) FAIL:`, e?.message || e); }
+        }
+
+        // c) fallback con code
+        if (!verified) {
+          try {
+            const { error } = await supabase.auth.exchangeCodeForSession(tokenFromParams);
+            if (error) throw error;
+            verified = true; log('exchangeCodeForSession OK');
+          } catch(e){ lastErr = e; log('exchangeCodeForSession FAIL:', e?.message || e); }
+        }
+
+        if (!verified) throw lastErr || new Error("Link could not be verified.");
+
+        show("view-verified");
+        setDeeplink(type === "invite" ? "invite" : "verify");
+        return;
       }
 
-      if (token) {
-        const { error } = await supabase.auth.exchangeCodeForSession(token);
+      // 4) Fallback: intentar code→session genérico
+      if (tokenFromParams) {
+        const { error } = await supabase.auth.exchangeCodeForSession(tokenFromParams);
         if (!error) { show("view-verified"); setDeeplink("verify"); return; }
       }
 
       throw new Error("Unknown link type.");
     } catch (e) {
       console.error(e);
+      log('FINAL ERROR:', e?.message || e);
       $("#err-text").textContent = e?.message || "Invalid or expired link.";
       show("view-error");
     }
