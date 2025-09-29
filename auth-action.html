@@ -45,7 +45,6 @@
   // ---- CONFIG ----
   const SUPABASE_URL = "https://tcobgzhtmuxzjdkmwdsy.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0";
-
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const deeplinkBase = "easycare://auth-success";
@@ -61,7 +60,6 @@
   function setDeeplink(type){
     const params = new URLSearchParams({ type });
     const deep = `${deeplinkBase}?${params.toString()}`;
-
     const androidPackage = 'easycare.com.easycare_app';
     const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
     const isAndroid = /Android/i.test(navigator.userAgent);
@@ -100,8 +98,8 @@
   const type   = (params.get("type") || "").toLowerCase();
 
   // Tokens posibles
-  const tokenHash = params.get("token_hash") || params.get("token") || ""; // preferimos token_hash ALWAYS
-  const code      = params.get("code") || "";                               // PKCE code (lo ignoramos si no hay code_verifier)
+  const tokenHash = params.get("token_hash") || params.get("token") || ""; // preferimos token_hash
+  const code      = params.get("code") || "";                               // PKCE code
   const codeVer   = params.get("code_verifier") || "";
 
   // Fragment tokens (implicit)
@@ -156,38 +154,50 @@
       }
 
       // SIGNUP / INVITE / EMAIL CHANGE
-      if (['signup','invite','email_change','email_verification'].includes(type)) {
+      if (type === "signup" || type === "email_verification" || type === "invite" || type === "email_change") {
         let ok = false, lastErr = null;
 
-        // 1) SIEMPRE intentar verifyOtp con token_hash (forzado)
-        if (tokenHash) {
+        // a) verifyOtp con token_hash
+        if (tokenHash && !ok) {
           try {
             const { error } = await supabase.auth.verifyOtp({
-              type: (type === 'email_change') ? 'email_change' : 'signup',
+              type: (type === "email_change") ? "email_change" : "signup",
               token_hash: tokenHash
             });
             if (error) throw error;
-            ok = true; log('verifyOtp(token_hash) OK');
-          } catch (e) { lastErr = e; log('verifyOtp(token_hash) FAIL:', e?.message || e); }
+            ok = true; log("verifyOtp(token_hash) OK");
+          } catch (e) { lastErr = e; log("verifyOtp(token_hash) FAIL:", e?.message || e); }
         }
 
-        // 2) Solo si NO se pudo y realmente viene PKCE COMPLETO (code + code_verifier), intentamos exchange
-        if (!ok && code && codeVer) {
+        // b) verifyOtp con token (cuando llega ?code=... SIN code_verifier)
+        if (code && !ok && !codeVer) {
+          try {
+            const { error } = await supabase.auth.verifyOtp({
+              type: (type === "email_change") ? "email_change" : "signup",
+              token: code
+            });
+            if (error) throw error;
+            ok = true; log("verifyOtp(code as token) OK");
+          } catch (e) { lastErr = e; log("verifyOtp(code as token) FAIL:", e?.message || e); }
+        }
+
+        // c) fallback PKCE real (si viene code + code_verifier)
+        if (code && codeVer && !ok) {
           try {
             const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) throw error;
-            ok = true; log('exchangeCodeForSession OK');
-          } catch (e) { lastErr = e; log('exchangeCodeForSession FAIL:', e?.message || e); }
+            ok = true; log("exchangeCodeForSession OK");
+          } catch (e) { lastErr = e; log("exchangeCodeForSession FAIL:", e?.message || e); }
         }
 
-        if (!ok) throw lastErr || new Error('Link could not be verified.');
+        if (!ok) throw lastErr || new Error("Link could not be verified.");
 
         show("view-verified");
-        setDeeplink(type === 'invite' ? 'invite' : 'verify');
+        setDeeplink(type === "invite" ? "invite" : "verify");
         return;
       }
 
-      // Fallback: si llega un code COMPLETO (poco probable aquí)
+      // Fallback genérico
       if (code && codeVer) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!error) { show("view-verified"); setDeeplink("verify"); return; }
