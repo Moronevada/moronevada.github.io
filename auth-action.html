@@ -42,21 +42,18 @@
 
 <script>
 (function(){
-  // ---- Supabase ----
   const SUPABASE_URL = "https://tcobgzhtmuxzjdkmwdsy.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb2Jnemh0bXV4empka213ZHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3OTI2NjYsImV4cCI6MjA2NDM2ODY2Nn0.OmLd2uGnPenJeZO323XRXJK-d-8RPfl-GBEK8MoY1i0";
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ---- App deep link ----
   const deeplinkBase = "easycare://auth-success";
   const webFallback  = "https://easycarehh.com";
   const resetPage    = "https://moronevada.github.io/reset-password.html";
 
-  // ---- Helpers UI/Debug ----
   const $ = (id)=>document.getElementById(id);
   const show = (id)=>["view-loading","view-verified","view-error"].forEach(x=>$(x).classList.toggle("hidden", x!==id));
   const dbg = document.createElement('pre'); dbg.className='debug'; document.body.appendChild(dbg);
-  const log = (...a)=>{ try{console.log(...a);}catch(_){} dbg.textContent += a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\n'; };
+  const log = (...a)=>{console.log(...a); dbg.textContent += a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\n'; };
 
   function setDeeplink(type){
     const params = new URLSearchParams({ type });
@@ -64,155 +61,119 @@
     const androidPackage = 'easycare.com.easycare_app';
     const intentUrl = `intent://auth-success?${params.toString()}#Intent;scheme=easycare;package=${androidPackage};end`;
     const isAndroid = /Android/i.test(navigator.userAgent);
-    const btn = $('btn-deeplink');
-    const code = $('deeplink-code');
+    const btn = $('btn-deeplink'); const code = $('deeplink-code');
     if (btn) btn.href = isAndroid ? intentUrl : deep;
     if (code) code.textContent = deep;
-    if (btn) btn.addEventListener('click', ()=>{ try{window.location.href = isAndroid ? intentUrl : deep;}catch(_){}} , { once:true });
-    setTimeout(()=>{
-      if (isAndroid) {
-        window.location.replace(intentUrl);
-        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
-      } else {
-        window.location.href = deep;
-        setTimeout(()=>{ window.location.href = webFallback; }, 1500);
-      }
-    }, 300);
+    setTimeout(()=>{ window.location.href = isAndroid ? intentUrl : deep; setTimeout(()=>{ window.location.href = webFallback; },1500); },300);
   }
 
   function combinedParams(){
     const q = window.location.search.slice(1);
     const h = window.location.hash.replace(/^#/,'');
     const params = new URLSearchParams(q);
-    if (h) {
-      const hp = new URLSearchParams(h);
-      for (const [k,v] of hp.entries()) if (!params.has(k)) params.set(k,v);
-    }
+    if (h) { const hp = new URLSearchParams(h); for (const [k,v] of hp.entries()) if (!params.has(k)) params.set(k,v); }
     return params;
   }
 
-  // ---- Read params ----
   const params = combinedParams();
   const type   = (params.get("type") || "").toLowerCase();
-
-  const tokenHash = params.get("token_hash") || params.get("token") || "";
+  const tokenHash = params.get("token_hash") || "";
   const code      = params.get("code") || "";
-  const codeVer   = params.get("code_verifier") || "";
   const email     = params.get("email") || "";
-
   const hash = new URLSearchParams(window.location.hash.replace(/^#/,''));
   const accessToken  = hash.get('access_token') || params.get('access_token');
   const refreshToken = hash.get('refresh_token') || params.get('refresh_token');
   const fragType     = (hash.get('type') || '').toLowerCase();
-
   const err     = (params.get("error") || "").toLowerCase();
   const errCode = (params.get("error_code") || "").toLowerCase();
 
-  // ---- Debug line ----
   log('href:', window.location.href);
   log('type:', type, 'fragType:', fragType);
-  log('token_hash present:', !!tokenHash, 'code present:', !!code, 'code_verifier present:', !!codeVer);
-  log('email present:', !!email, 'has access_token:', !!accessToken);
+  log('token_hash present:', !!tokenHash, 'code present:', !!code);
 
-  // ---- Errors from provider ----
   if (err || errCode) {
     const msg =
       errCode === "otp_expired" ? "This link has expired. Please request a new one." :
       errCode === "rate_limit" || err === "too_many_requests" ? "Too many attempts. Please try again shortly." :
       err ? `Error: ${err}` : "Something went wrong. Please request a new link.";
-    $('err-text').textContent = msg;
-    show("view-error");
-    return;
+    $('err-text').textContent = msg; show("view-error"); return;
   }
 
-  // Send recovery links to the dedicated page
   if (type === 'recovery' || fragType === 'recovery') {
     const next = resetPage + window.location.search + window.location.hash;
     log('redirect -> reset-password.html', next);
-    window.location.replace(next);
-    return;
+    window.location.replace(next); return;
   }
 
-  if (!type && !tokenHash && !accessToken) {
+  if (!type && !tokenHash && !code && !accessToken) {
     $('err-text').textContent = "Open this page from a valid email link.";
-    show("view-error");
-    return;
+    show("view-error"); return;
   }
 
-  // ---- Main flow ----
   (async () => {
     try {
       // MAGIC LINK
       if (type === 'magiclink' || (accessToken && fragType !== 'recovery')) {
         if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          if (error) log('setSession(magiclink) WARN:', error.message || error);
+          if (error) log('setSession(magiclink) WARN:', error.message);
         }
-        show("view-verified");
-        setDeeplink("magiclink");
-        return;
+        show("view-verified"); setDeeplink("magiclink"); return;
       }
 
       // SIGNUP / INVITE / EMAIL CHANGE
-      if (type === "signup" || type === "email_verification" || type === "invite" || type === "email_change") {
+      if (["signup","email_verification","invite","email_change"].includes(type)) {
         let ok = false, lastErr = null;
 
-        // a) verifyOtp con token_hash (prioritario)
+        // a) token_hash clásico
         if (tokenHash && !ok) {
           try {
             const { error } = await supabase.auth.verifyOtp({
-              type: (type === "email_change") ? "email_change" : "signup",
+              type: type === "email_change" ? "email_change" : "signup",
               token_hash: tokenHash
             });
-            if (error) throw error;
-            ok = true; log("verifyOtp(token_hash) OK");
-          } catch (e) { lastErr = e; log("verifyOtp(token_hash) FAIL:", e?.message || e); }
+            if (error) throw error; ok = true; log("verifyOtp(token_hash) OK");
+          } catch (e) { lastErr = e; log("verifyOtp(token_hash) FAIL:", e.message); }
         }
 
-        // b) code SIN code_verifier → verifyOtp(token) REQUIERE email
-        if (code && !ok && !codeVer) {
-          try {
-            const payload = {
-              type: (type === "email_change") ? "email_change" : "signup",
-              token: code
-            };
-            if (email) payload.email = email;   // importante
-            const { error } = await supabase.auth.verifyOtp(payload);
-            if (error) throw error;
-            ok = true; log("verifyOtp(code as token) OK (with email)");
-          } catch (e) { lastErr = e; log("verifyOtp(code as token) FAIL:", e?.message || e); }
-        }
-
-        // c) PKCE real (si llega code + code_verifier)
-        if (code && codeVer && !ok) {
+        // b) PKCE: code con prefijo pkce_
+        if (code && code.startsWith("pkce_") && !ok) {
           try {
             const { error } = await supabase.auth.exchangeCodeForSession(code);
-            if (error) throw error;
-            ok = true; log("exchangeCodeForSession OK");
-          } catch (e) { lastErr = e; log("exchangeCodeForSession FAIL:", e?.message || e); }
+            if (error) throw error; ok = true; log("exchangeCodeForSession OK");
+          } catch (e) { lastErr = e; log("exchangeCodeForSession FAIL:", e.message); }
+        }
+
+        // c) fallback: code simple como token
+        if (code && !ok) {
+          try {
+            const payload = { type: type === "email_change" ? "email_change" : "signup", token: code };
+            if (email) payload.email = email;
+            const { error } = await supabase.auth.verifyOtp(payload);
+            if (error) throw error; ok = true; log("verifyOtp(code as token) OK");
+          } catch (e) { lastErr = e; log("verifyOtp(code as token) FAIL:", e.message); }
         }
 
         if (!ok) throw lastErr || new Error("Link could not be verified.");
 
-        show("view-verified");
-        setDeeplink(type === "invite" ? "invite" : "verify");
-        return;
+        show("view-verified"); setDeeplink(type === "invite" ? "invite" : "verify"); return;
       }
 
-      // Fallback genérico: si algún día llega PKCE completo fuera de los tipos
-      if (code && codeVer) {
+      // fallback genérico
+      if (code && code.startsWith("pkce_")) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!error) { show("view-verified"); setDeeplink("verify"); return; }
       }
 
       throw new Error('Unknown or unsupported link.');
     } catch (e) {
-      log('FINAL ERROR:', e?.message || e);
-      $('err-text').textContent = e?.message || "Invalid or expired link.";
+      log('FINAL ERROR:', e.message);
+      $('err-text').textContent = e.message || "Invalid or expired link.";
       show("view-error");
     }
   })();
 })();
 </script>
+
 </body>
 </html>
